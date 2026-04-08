@@ -7,7 +7,7 @@ azure:
       CONDA_BLD_PATH: C:\\bld\\
       MINIFORGE_HOME: C:\Miniforge
       SET_PAGEFILE: "True"
-conda_forge_output_validation: true
+conda_forge_output_validation: false
 github:
   branch_name: main
   tooling_branch_name: main

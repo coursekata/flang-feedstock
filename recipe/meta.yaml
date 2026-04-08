@@ -7,11 +7,15 @@ package:
 source:
   url: https://github.com/llvm/llvm-project/archive/refs/tags/llvmorg-{{ version.replace(".rc", "-rc") }}.tar.gz
   sha256: fba0618cf8de48ec05880c446edd756a2669157eab9d29949e971c77da10275f
+  patches:
+    # from https://github.com/serge-sans-paille/llvm-project/tree/feature/flang-wasm
+    - patches/0001-Instructions-for-building-a-functional-Flang-cross-c.patch
+    - patches/0002-Minimal-WASM-support-for-flang.patch
+    - patches/0003-Specialize-Flang-to-target-WASM.patch
 
 build:
   number: 0
-  # intentionally only windows (main target) & linux (debuggability)
-  skip: true  # [osx]
+  skip: true  # [not linux]
 
 requirements:
   build:

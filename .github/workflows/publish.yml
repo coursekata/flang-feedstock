@@ -1,0 +1,48 @@
+name: Publish to prefix.dev
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Build run ID to publish artifacts from (leave empty for latest)"
+        required: false
+
+permissions:
+  contents: read
+  id-token: write
+  actions: read
+
+jobs:
+  publish:
+    name: Upload packages to prefix.dev
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: conda-packages
+          path: packages
+          run-id: ${{ inputs.run_id || '' }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install rattler-build
+        run: |
+          curl -fsSL https://pixi.sh/install.sh | PIXI_NO_PATH_UPDATE=1 bash
+          export PATH="$HOME/.pixi/bin:$PATH"
+          pixi global install rattler-build
+
+      - name: Upload to prefix.dev
+        run: |
+          export PATH="$HOME/.pixi/bin:$PATH"
+          shopt -s nullglob
+          pkgs=(packages/*.conda)
+          if [ ${#pkgs[@]} -eq 0 ]; then
+            echo "::error::No .conda packages found"
+            exit 1
+          fi
+          for pkg in "${pkgs[@]}"; do
+            echo "Uploading $pkg"
+            rattler-build upload prefix -c "ck-emscripten-forge-dev" "$pkg"
+          done

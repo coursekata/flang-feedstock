@@ -1,0 +1,82 @@
+name: Build and Publish
+
+on:
+  push:
+    branches: [feat/emscripten-21.1.0, main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  build:
+    name: Build flang (linux-64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Free disk space
+        run: |
+          sudo mkdir -p /opt/empty_dir || true
+          for d in \
+            /opt/ghc \
+            /opt/hostedtoolcache \
+            /usr/lib/jvm \
+            /usr/local/.ghcup \
+            /usr/local/lib/android \
+            /usr/local/share/powershell \
+            /usr/share/dotnet \
+            /usr/share/swift \
+            ; do
+            sudo rsync --stats -a --delete /opt/empty_dir/ $d || true
+          done
+          sudo apt-get purge -y -f firefox google-chrome-stable microsoft-edge-stable || true
+          sudo apt-get autoremove -y >& /dev/null
+          sudo apt-get autoclean -y >& /dev/null
+          df -h
+
+      - name: Run conda-build in Docker
+        env:
+          CONFIG: linux_64_
+          UPLOAD_PACKAGES: "False"
+          IS_PR_BUILD: "True"
+          CONDA_FORGE_DOCKER_RUN_ARGS: "--rm"
+          CI: github_actions
+          FEEDSTOCK_NAME: flang-feedstock
+          GIT_BRANCH: ${{ github.ref_name }}
+          flow_run_id: gha_${{ github.run_number }}.${{ github.run_attempt }}
+          remote_url: ${{ github.server_url }}/${{ github.repository }}
+          sha: ${{ github.sha }}
+        run: .scripts/run_docker_build.sh
+
+      - name: Upload build artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: conda-packages
+          path: |
+            build_artifacts/linux-64/*.conda
+            build_artifacts/linux-64/*.tar.bz2
+          if-no-files-found: warn
+
+      - name: Publish to prefix.dev
+        if: success() && github.event_name == 'workflow_dispatch'
+        run: |
+          curl -fsSL https://pixi.sh/install.sh | PIXI_NO_PATH_UPDATE=1 bash
+          export PATH="$HOME/.pixi/bin:$PATH"
+          pixi global install rattler-build
+
+          shopt -s nullglob
+          pkgs=(build_artifacts/linux-64/*.conda)
+          if [ ${#pkgs[@]} -eq 0 ]; then
+            echo "::error::No .conda packages found in build_artifacts/linux-64/"
+            exit 1
+          fi
+          for pkg in "${pkgs[@]}"; do
+            echo "Uploading $pkg"
+            rattler-build upload prefix -c "ck-emscripten-forge-dev" "$pkg"
+          done
